@@ -15,8 +15,8 @@ $ A x = b <==> ||A x - b||^2 --> min <==> x^T A^T A x - 2 b^T x --> min $
 $ x =  A^T (A A^T)^(-1) b spa - spa "is one solution" $ 
 
 $ A^T A "has n real non-negative eigenvalues" $
-$ ||x||^2 = b^T (A A^T)^(-1^T) A A^T (A A^T)^(-1) b = b^T (A A^T)^(-1^T) b $
-$ ||x||^2 <= ||b||^2 ||(A A^T)^(-1^T)|| <= (||b||^2)/("smallest singular value of " A A^T) spa - spa "bound on the solution" $
+$ ||x||^2 = b^T (A A^T)^(-1) A A^T (A A^T)^(-1) b = b^T (A A^T)^(-1) b $
+$ ||x||^2 <= ||b||^2 ||(A A^T)^(-1)|| <= (||b||^2)/("smallest singular value of " A A^T) spa - spa "bound on the solution" $
 Generally there is no upper bound on the solution because A can be arbitrarily close to singular. And also we don't want to compute SVD or the inverse matrix.
 
 = Algorithms
