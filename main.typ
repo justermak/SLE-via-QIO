@@ -11,7 +11,7 @@ Solving linear equation systems using quantum inspired optimization (QIO) for so
 
 = Formulas
 
-$ A x = b <==> ||A x - b||^2 --> min <==> x^T A^T A x - 2 b^T x --> min $
+$ A x = b <==> ||A x - b||^2 --> min <==> x^T A^T A x - 2 b^T A x --> min $
 $ x =  A^T (A A^T)^(-1) b spa - spa "is one solution" $ 
 
 $ A^T A "has n real non-negative eigenvalues" $
