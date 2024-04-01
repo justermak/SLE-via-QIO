@@ -79,7 +79,7 @@ def solve_exact(A: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.linalg.solve(A, b)
 
 
-def solve_slsqp(A: np.ndarray, b: np.ndarray, tol: float = 0.001, verbose: bool = False) -> np.ndarray:
+def solve_slsqp(A: np.ndarray, b: np.ndarray, tol: float = 0.01, verbose: bool = False) -> np.ndarray:
     assert A.ndim == 2
     assert b.ndim == 1
     n = np.size(A, axis=1)
@@ -98,7 +98,7 @@ def solve_slsqp(A: np.ndarray, b: np.ndarray, tol: float = 0.001, verbose: bool 
 
 
 def solve_DNC_QUBO(A: np.ndarray, b: np.ndarray, lb: np.ndarray = None, ub: np.ndarray = None, option: str = 'bruteforce',
-                         tol: float = 0.01, verbose: bool = True) -> np.ndarray:
+                         tol: float = 0.01, verbose: bool = False) -> np.ndarray:
     assert A.ndim == 2
     assert b.ndim == 1
     n = np.size(A, axis=1)

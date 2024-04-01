@@ -3,4 +3,4 @@ import test
 
 
 if __name__ == '__main__':
-    test.test_and_plot(100)
+    print(test.test_and_plot(1000))

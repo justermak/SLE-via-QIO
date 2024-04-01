@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import lib
 
 
+EPS = 1e-1
 rng = np.random.default_rng()
 directory = Path(f"{os.path.dirname(__file__)}")
 tests_path = directory / Path("tests.txt")
@@ -42,3 +43,5 @@ def test_and_plot(n: int):
     plt.ylabel("Norm difference")
     plt.title("Accuracy of DNC QUBO")
     plt.savefig(directory / Path('test_result.png'))
+    norms = np.array(norms)
+    return np.size(norms[norms > EPS])
