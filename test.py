@@ -61,6 +61,7 @@ def test_and_plot(qubo_option: str, test_size: str):
     plt.xlabel("Test number")
     plt.ylabel("Norm difference")
     plt.savefig(directory / Path('!absolute_errors.png'))
+    plt.clf()
     plt.scatter(range(n), df['ratios'], c='red')
     plt.xlabel("Test number")
     plt.ylabel("Relative norm difference")
