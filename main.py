@@ -1,6 +1,7 @@
 import lib
 import test
+import numpy as np
 
 
 if __name__ == '__main__':
-    print(test.test_and_plot(1000))
+    test.test_and_plot('dwave', 'small')

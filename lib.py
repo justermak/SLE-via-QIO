@@ -7,6 +7,10 @@ from dwave_qbsolv import QBSolv
 import itertools
 
 
+MAX_BORDER = 100
+EPS = 0.1
+
+
 def to_QP(A: np.ndarray, b: np.ndarray) -> (np.ndarray, np.ndarray):
     assert A.ndim == 2
     assert b.ndim == 1
@@ -44,10 +48,14 @@ def QUBO_gekko(A: np.ndarray) -> np.ndarray:
     assert A.ndim == 2
     assert A.shape == A.shape[::-1]
     n = np.size(A, axis=1)
-    m = GEKKO()
+    m = GEKKO(remote=False)
     x = m.Array(m.Var, (n,), value=0, lb=0, ub=1, integer=True)
     m.Obj(x.T @ A @ x)
-    m.solve(disp=False)
+    try:
+        m.solve(disp=False)
+    except Exception:
+        print(f"gekko unable to solve QUBO")
+        return np.zeros(n)
     return np.vectorize(lambda x: x[0])(x)
 
 
@@ -106,11 +114,11 @@ def solve_DNC_QUBO(A: np.ndarray, b: np.ndarray, lb: np.ndarray = None, ub: np.n
     if lb is not None:
         assert lb.size == n
     else:
-        lb = -1e18 * np.ones(n)
+        lb = -MAX_BORDER * np.ones(n)
     if ub is not None:
         assert ub.size == n
     else:
-        ub = 1e18 * np.ones(n)
+        ub = MAX_BORDER * np.ones(n)
     if verbose:
         print(f"Bisection QUBO solving SLE with A={A}, b={b}, lb={lb}, ub={ub}")
     it = math.ceil(math.log2(max(ub - lb)/tol))
