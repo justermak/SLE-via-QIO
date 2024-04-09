@@ -1,14 +1,17 @@
 import math
 
 import numpy as np
+import scipy.stats as ss
 from scipy.optimize import minimize as scp_minimize
 from gekko import GEKKO
 from dwave.samplers import SimulatedAnnealingSampler
 import itertools
 
-max_border = 1e5
-eps = 1e-5
-base_prec = 3
+rng = np.random.default_rng()
+max_border = 1e3
+eps = 1e-2
+base_prec = 4
+base_iter = 30
 
 
 def to_QP(A: np.ndarray, b: np.ndarray) -> (np.ndarray, np.ndarray):
@@ -16,7 +19,18 @@ def to_QP(A: np.ndarray, b: np.ndarray) -> (np.ndarray, np.ndarray):
     assert b.ndim == 1
     n, m = A.shape
     assert b.size == n
-    return A.T @ A, -2 * b.T @ A
+    AA = A.T @ A
+    bb = -2 * b.T @ A
+    return AA, bb
+
+
+def eval(A: np.ndarray, b: np.ndarray, p: np.ndarray) -> float:
+    assert A.ndim == 2
+    assert b.ndim == 1
+    n, m = A.shape
+    assert b.size == n
+    AA, bb = to_QP(A, b)
+    return (p.T @ AA + bb) @ p
 
 
 def substitute_kx_plus_d(A: np.ndarray, b: np.ndarray, k: np.ndarray, d: np.ndarray) -> (
@@ -184,6 +198,42 @@ def solve_DNC_QUBO(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce', lb:
     return lb
 
 
+def solve_DNC_QUBO_with_random_pivoting(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce', lb: np.ndarray = None,
+                                        ub: np.ndarray = None, tol: float = eps, verbose: bool = False) -> np.ndarray:
+    assert A.ndim == 2
+    assert b.ndim == 1
+    n, m = A.shape
+    assert b.size == n
+    if lb is not None:
+        assert lb.size == m
+    else:
+        lb = -max_border * np.ones(m)
+    if ub is not None:
+        assert ub.size == m
+    else:
+        ub = max_border * np.ones(m)
+    if verbose:
+        print(f"DNC QUBO solving SLE with\nA={A}\nb={b}\nlb={lb}\nub={ub}\ntol={tol}")
+    it = math.ceil(math.log2(max(ub - lb) / tol))
+    for i in range(it):
+        mu, sigma = .25, 2/12
+        ls = ss.truncnorm(-3, 3, mu, sigma).rvs(m)
+        rs = ss.truncnorm(-3, 3, mu + .5, sigma).rvs(m)
+        d = lb + (ub - lb) * ls
+        k = (ub - lb) * (rs - ls)
+        c = (ub - lb) / 2
+        A_sub, b_sub = substitute_kx_plus_d(A, b, k, d)
+        AA, bb = to_QP(A_sub, b_sub)
+        x = solve_QUBO(AA + np.diag(bb), option)
+        ub -= c * (1 - x)
+        lb += c * x
+        if verbose:
+            print(f"iter={i}\nk={k}\nd={d}\nA_sub={A_sub}\nb_sub={b_sub}\nAA={AA}\nbb={bb}\nx={x}\nub={ub}\nlb={lb}\n")
+    if verbose:
+        print(f"Exiting DNC QUBO")
+    return lb
+
+
 def to_finite_precision_form(lb: np.ndarray, ub: np.ndarray, prec: int) -> (np.ndarray, np.ndarray):
     assert lb.ndim == 1
     assert ub.ndim == 1
@@ -225,3 +275,17 @@ def solve_one_step_QUBO(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce'
     if verbose:
         print(f"Exiting one step QUBO")
     return vals
+
+
+def solve_iteratively(A: np.ndarray, b: np.ndarray, niter: int = base_iter,  option: str = 'bruteforce', lb: np.ndarray = None,
+                      ub: np.ndarray = None, tol: float = eps, verbose: bool = False) -> np.ndarray:
+    n, m = A.shape
+    res = [np.zeros(n)]
+    for _ in range(niter):
+        res.append(solve_DNC_QUBO_with_random_pivoting(A, b, option, lb, ub, tol, verbose))
+        y = eval(A, b, res[-1])
+        if y > 0:
+            res.pop()
+        else:
+            A, b = substitute_kx_plus_d(A, b, np.ones(m), res[-1])
+    return np.array(res).sum(axis=0)
