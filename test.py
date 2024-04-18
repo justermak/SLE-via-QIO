@@ -14,6 +14,7 @@ tests_path = directory / Path("tests")
 test_groups = 4
 group_size = 10
 matrix_size = 4
+tested_algorithms = ['QUBO_standard', 'QUBO_stir', 'QUBO_non_iter']
 
 
 def write_eqs(eqs: Iterator[Tuple[np.ndarray, np.ndarray]], filename: str) -> None:
@@ -28,14 +29,15 @@ def read_eqs(filename: str) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
     return zip(x.__next__(), x.__next__())
 
 
-def generate_equations_result_eigenvalues(res: Optional[np.ndarray], eigenvalues: Optional[np.ndarray], size: int, n: int):
+def generate_equations_result_eigenvalues(res: Optional[np.ndarray], eigenvalues: Optional[np.ndarray], size: int,
+                                          n: int):
     gen_res = res is None
     gen_eigenvalues = eigenvalues is None
     for i in range(n):
         if gen_res:
-            res = rng.uniform(-1, 1, size)
+            res = rng.uniform(-1000, 1000, size)
         if gen_eigenvalues:
-            eigenvalues = rng.uniform(-1, 1, size)
+            eigenvalues = rng.uniform(1, 10, size)
         a = ortho_group.rvs(size)
         A = a.T @ np.diag(eigenvalues) @ a
         b = A @ res
@@ -65,8 +67,7 @@ def get_tests(option: str) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
             raise Exception('Incorrect option. Should be load / generate')
 
 
-def solve_all(tests: Iterator[Tuple[np.ndarray, np.ndarray]], qubo_option: str = 'bruteforce',
-              reference_option: str = 'np', save_option: str = 'save') -> pd.DataFrame:
+def solve_all(tests: Iterator[Tuple[np.ndarray, np.ndarray]], save_option: str) -> pd.DataFrame:
     match save_option:
         case 'save':
             tests, write_tests = itertools.tee(tests)
@@ -79,15 +80,15 @@ def solve_all(tests: Iterator[Tuple[np.ndarray, np.ndarray]], qubo_option: str =
         case _:
             raise Exception('Incorrect option. Should be save / discard')
     df = pd.DataFrame()
-    solutions = [[lib.solve_reference(A, b, reference_option), lib.solve_DNC_QUBO(A, b, qubo_option),
-                  lib.solve_one_step_QUBO(A, b, qubo_option,
-                                          lb=np.array([-2] * matrix_size), ub=np.array([2] * matrix_size)),
-                  lib.solve_iteratively(A, b)] for A, b in tests]
-
-    df[['reference_solution', 'DNC_solution', 'One_step_solution', 'Iterative_solution']] = solutions
+    tests = list(tests)
+    solutions = [[lib.solve_reference(A, b), lib.solve(A, b),
+                  lib.solve(A, b, stir=True), lib.solve_one(A, b)] for A, b in tests]
+    df[[f'{name}_solution' for name in ['reference'] + tested_algorithms]] = solutions
+    As, bs = zip(*tests)
     df['reference_norm'] = np.vectorize(np.linalg.norm)(df['reference_solution'])
-    for name in ['DNC', 'One_step', 'Iterative']:
+    for name in tested_algorithms:
         df[f'{name}_norm'] = np.vectorize(np.linalg.norm)(df[f'{name}_solution'])
+        df[f'{name}_value'] = [np.linalg.norm(A @ x - b) for A, b, x in zip(As, bs, df[f'{name}_solution'].tolist())]
         df[f'{name}_diff'] = np.vectorize(np.linalg.norm)(df['reference_solution'] - df[f'{name}_solution'])
         df[f'{name}_ratio'] = df[f'{name}_diff'] / df['reference_norm']
     return df
@@ -107,14 +108,14 @@ def plot(title: str, data: pd.DataFrame, path: Path) -> None:
     plt.clf()
 
 
-def test_and_plot(qubo_option: str, refecence_option: str, test_option: str, save_option: str) -> None:
+def test_and_plot(test_option: str, save_option: str) -> None:
     tests = get_tests(test_option)
-    df = solve_all(tests, qubo_option, refecence_option, save_option)
+    df = solve_all(tests, save_option)
+    plot('Norm ||x*||', df['reference_norm'], Path('reference_norm.png'))
 
-    plot('Norm of reference solution', df['reference_norm'], Path('reference_norm.png'))
-
-    for name in ['DNC', 'One_step', 'Iterative']:
+    for name in tested_algorithms:
+        plot('Norm ||x||', df[f'{name}_norm'], Path(f'{name}_norm.png'))
+        plot('Value ||Ax - b||', df[f'{name}_value'], Path(f'{name}_value.png'))
         plot('Absolute error (||x - x*||)', df[f'{name}_diff'], Path(f'{name}_diff.png'))
         plot('Relative error (||x - x*|| / ||x*||)', df[f'{name}_ratio'], Path(f'{name}_ratio.png'))
-        plot('Norm', df[f'{name}_norm'], Path(f'{name}_norm.png'))
 

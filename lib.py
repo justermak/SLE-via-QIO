@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 import scipy.stats as ss
 from scipy.optimize import minimize as scp_minimize
@@ -11,7 +9,9 @@ rng = np.random.default_rng()
 max_border = 1e3
 eps = 1e-2
 base_prec = 4
-base_iter = 30
+base_neighbors = 4
+base_iter = 10
+sigma = 1 / 4
 
 
 def to_QP(A: np.ndarray, b: np.ndarray) -> (np.ndarray, np.ndarray):
@@ -24,52 +24,37 @@ def to_QP(A: np.ndarray, b: np.ndarray) -> (np.ndarray, np.ndarray):
     return AA, bb
 
 
-def eval(A: np.ndarray, b: np.ndarray, p: np.ndarray) -> float:
+def eval(A: np.ndarray, b: np.ndarray, x: np.ndarray) -> float:
     assert A.ndim == 2
     assert b.ndim == 1
     n, m = A.shape
     assert b.size == n
     AA, bb = to_QP(A, b)
-    return (p.T @ AA + bb) @ p
+    return (x.T @ AA + bb) @ x
 
 
-def substitute_kx_plus_d(A: np.ndarray, b: np.ndarray, k: np.ndarray, d: np.ndarray) -> (
-        np.ndarray, np.ndarray):
+def substitute(A: np.ndarray, b: np.ndarray, c: np.ndarray) -> (np.ndarray, np.ndarray):
     assert A.ndim == 2
     assert b.ndim == 1
     n, m = A.shape
     assert b.size == n
-    assert k.size == m
-    assert d.size == m
-    AA = A * k
-    bb = b - A @ d
-    return AA, bb
-
-
-def substitute_linear_form(A: np.ndarray, b: np.ndarray, c: np.ndarray) -> (np.ndarray, np.ndarray):
-    assert A.ndim == 2
-    assert b.ndim == 1
-    n, m = A.shape
-    assert b.size == n
-    assert c.shape[0] == m
-    # x = c[0] + c[1] * x_1 + ... + c[n-1] * x_{n-1}
-    n = np.size(A, axis=1)
-    k = np.size(c, axis=1) - 1
+    assert c.ndim == 2
+    _m, k = c.shape
+    k -= 1
+    assert _m == m
+    # x = c[0] + c[1] * x_1 + ... + c[m-1] * x_{m-1}
     const, coef = c[:, 0], c[:, 1:]
     AA = np.repeat(A, k, axis=1) * coef.flatten()
     bb = b - A @ const
     return AA, bb
 
 
-def extract_solution_from_substitution(res: np.ndarray, c: np.ndarray) -> np.ndarray:
-    assert res.ndim == 1
-    assert c.ndim == 2
-    n = np.size(c, axis=0)
-    k = np.size(c, axis=1) - 1
-    assert res.size == n * k
-    const, coef = c[:, 0], c[:, 1:]
-    res.reshape((n, k))
-    vals = const + (coef * res.reshape(n, k)).sum(axis=1)
+def extract_solution_box(q: np.ndarray, prec: int) -> np.ndarray:
+    assert q.ndim == 1
+    n = q.size
+    q.reshape(-1, prec)
+    powers = np.array([2 ** i for i in range(prec)])
+    vals = (q.reshape(-1, prec) * powers).sum(axis=1)
     return vals
 
 
@@ -143,20 +128,20 @@ def solve_slsqp(A: np.ndarray, b: np.ndarray, tol: float = 0.01, verbose: bool =
         print(f"SLSQP solving SLE with\nA={A}\nb={b}")
     AA, bb = to_QP(A, b)
 
-    def fun(x, *args):
+    def obj(x, *args):
         return (x.T @ AA + bb) @ x
 
     def callback(xk):
         if verbose:
             print(f"xk={xk}")
 
-    result = scp_minimize(fun, np.zeros(m), method='SLSQP', tol=tol, callback=callback)
+    result = scp_minimize(obj, np.zeros(m), method='SLSQP', tol=tol, callback=callback)
     if verbose:
         print(f"Exiting SLSQP")
     return result['x']
 
 
-def solve_reference(A: np.ndarray, b: np.ndarray, option: str) -> np.ndarray:
+def solve_reference(A: np.ndarray, b: np.ndarray, option: str = 'np') -> np.ndarray:
     match option:
         case 'np':
             return solve_np(A, b)
@@ -166,8 +151,9 @@ def solve_reference(A: np.ndarray, b: np.ndarray, option: str) -> np.ndarray:
             raise NotImplemented()
 
 
-def solve_DNC_QUBO(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce', lb: np.ndarray = None,
-                   ub: np.ndarray = None, tol: float = eps, verbose: bool = False) -> np.ndarray:
+def solve_one(A: np.ndarray, b: np.ndarray, option: str = 'dwave', lb: np.ndarray = None,
+              ub: np.ndarray = None, prec: int = base_prec, neighbors: int = base_neighbors, tol: float = eps,
+              stir: bool = True, verbose: bool = False) -> np.ndarray:
     assert A.ndim == 2
     assert b.ndim == 1
     n, m = A.shape
@@ -180,73 +166,43 @@ def solve_DNC_QUBO(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce', lb:
         assert ub.size == m
     else:
         ub = max_border * np.ones(m)
-    if verbose:
-        print(f"DNC QUBO solving SLE with\nA={A}\nb={b}\nlb={lb}\nub={ub}\ntol={tol}")
-    it = math.ceil(math.log2(max(ub - lb) / tol))
-    for i in range(it):
-        k = (ub - lb) / 2
-        d = lb + (ub - lb) / 4
-        A_sub, b_sub = substitute_kx_plus_d(A, b, k, d)
-        AA, bb = to_QP(A_sub, b_sub)
-        x = solve_QUBO(AA + np.diag(bb), option)
-        ub -= k * (1 - x)
-        lb += k * x
-        if verbose:
-            print(f"iter={i}\nk={k}\nd={d}\nA_sub={A_sub}\nb_sub={b_sub}\nAA={AA}\nbb={bb}\nx={x}\nub={ub}\nlb={lb}\n")
-    if verbose:
-        print(f"Exiting DNC QUBO")
-    return lb
-
-
-def solve_DNC_QUBO_with_random_pivoting(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce', lb: np.ndarray = None,
-                                        ub: np.ndarray = None, tol: float = eps, verbose: bool = False) -> np.ndarray:
-    assert A.ndim == 2
-    assert b.ndim == 1
-    n, m = A.shape
-    assert b.size == n
-    if lb is not None:
-        assert lb.size == m
-    else:
-        lb = -max_border * np.ones(m)
-    if ub is not None:
-        assert ub.size == m
-    else:
-        ub = max_border * np.ones(m)
-    if verbose:
-        print(f"DNC QUBO solving SLE with\nA={A}\nb={b}\nlb={lb}\nub={ub}\ntol={tol}")
-    it = math.ceil(math.log2(max(ub - lb) / tol))
-    for i in range(it):
-        mu, sigma = .25, 2/12
-        ls = ss.truncnorm(-3, 3, mu, sigma).rvs(m)
-        rs = ss.truncnorm(-3, 3, mu + .5, sigma).rvs(m)
-        d = lb + (ub - lb) * ls
-        k = (ub - lb) * (rs - ls)
-        c = (ub - lb) / 2
-        A_sub, b_sub = substitute_kx_plus_d(A, b, k, d)
-        AA, bb = to_QP(A_sub, b_sub)
-        x = solve_QUBO(AA + np.diag(bb), option)
-        ub -= c * (1 - x)
-        lb += c * x
-        if verbose:
-            print(f"iter={i}\nk={k}\nd={d}\nA_sub={A_sub}\nb_sub={b_sub}\nAA={AA}\nbb={bb}\nx={x}\nub={ub}\nlb={lb}\n")
-    if verbose:
-        print(f"Exiting DNC QUBO")
-    return lb
-
-
-def to_finite_precision_form(lb: np.ndarray, ub: np.ndarray, prec: int) -> (np.ndarray, np.ndarray):
-    assert lb.ndim == 1
-    assert ub.ndim == 1
-    assert lb.size == ub.size
+    assert neighbors >= 0
     assert prec > 0
-    n = lb.size
-    k = np.log2((ub - lb)).astype(int) + 1
-    c = np.array([[lb[i]] + [2 ** j for j in range(k[i] - prec, k[i])] for i in range(n)])
-    return c
+    assert 2 * neighbors + 1 < 2 ** prec
+    if verbose:
+        print(f"Solving SLE with\nA={A}\nb={b}\nlb={lb}\nub={ub}\nprec={prec}\nneighbors={neighbors}\ntol={tol}\nstir={stir}\n")
+    it = np.ceil(np.log(max(ub - lb) / tol) / np.log(2 ** prec/(2 * neighbors + 1))).astype(int)
+    for _ in range(it):
+        lengths = (ub - lb) / 2 ** prec
+        c = []
+        for i in range(m):
+            rnd = ss.truncnorm(-1 / 2 / sigma, 1 / 2 / sigma, 1 / 2, sigma).rvs() if stir else 1/2
+            mn, mx = rnd, rnd
+            const = rnd * lengths[i] + lb[i]
+            coefs = []
+            for k in range(prec):
+                rnd = ss.truncnorm(-mn / sigma, (1 - mx) / sigma, 0, sigma).rvs() if stir else 0
+                coefs += [(rnd + 2 ** k) * lengths[i]]
+                mn = min(mn, mn + rnd)
+                mx = max(mx, mx + rnd)
+            c += [[const] + coefs]
+        c = np.array(c)
+        A_sub, b_sub = substitute(A, b, c)
+        AA, bb = to_QP(A_sub, b_sub)
+        q = solve_QUBO(AA + np.diag(bb), option)
+        box = extract_solution_box(q, prec)
+        lbd = np.clip(box - neighbors, 0, 2 ** prec - 1)
+        ubd = np.clip(2 ** prec - 1 - box - neighbors, 0, 2 ** prec - 1)
+        lb += lbd * lengths
+        ub -= ubd * lengths
+        if verbose:
+            print(f"c={c}\nq={q}\nbox={box}\nlbd={lbd}\nubd={ubd}\nlb={lb}\nub={ub}\n")
+    return lb
 
 
-def solve_one_step_QUBO(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce', lb: np.ndarray = None,
-                        ub: np.ndarray = None, prec: int = None, verbose: bool = False) -> np.ndarray:
+def solve(A: np.ndarray, b: np.ndarray, niter: int = base_iter, option: str = 'dwave', lb: np.ndarray = None,
+               ub: np.ndarray = None, prec: int = base_prec, neighbors: int = base_neighbors, tol: float = eps,
+               stir: bool = False, verbose: bool = False) -> np.ndarray:
     assert A.ndim == 2
     assert b.ndim == 1
     n, m = A.shape
@@ -259,33 +215,16 @@ def solve_one_step_QUBO(A: np.ndarray, b: np.ndarray, option: str = 'bruteforce'
         assert ub.size == m
     else:
         ub = max_border * np.ones(m)
-    if prec is not None:
-        assert prec > 0
-    else:
-        prec = base_prec
+    res = [np.zeros(m)]
     if verbose:
-        print(f"One step QUBO solving SLE with\nA={A}\nb={b}\nlb={lb}\nub={ub}\nprec={prec}")
-    c = to_finite_precision_form(lb, ub, prec)
-    A_sub, b_sub = substitute_linear_form(A, b, c)
-    AA, bb = to_QP(A_sub, b_sub)
-    x = solve_QUBO(AA + np.diag(bb), option)
-    vals = extract_solution_from_substitution(x, c)
-    if verbose:
-        print(f"c={c}\nA_sub={A_sub}\nb_sub={b_sub}\nAA={AA}\nbb={bb}\nx={x}\nvals={vals}\n")
-    if verbose:
-        print(f"Exiting one step QUBO")
-    return vals
-
-
-def solve_iteratively(A: np.ndarray, b: np.ndarray, niter: int = base_iter,  option: str = 'bruteforce', lb: np.ndarray = None,
-                      ub: np.ndarray = None, tol: float = eps, verbose: bool = False) -> np.ndarray:
-    n, m = A.shape
-    res = [np.zeros(n)]
+        print(f"Solving SLE with\nA={A}\nb={b}\nniter={niter}\noption={option}\nlb={lb}\nub={ub}\nprec={prec}\nneighbors={neighbors}\ntol={tol}\nstir={stir}\n")
     for _ in range(niter):
-        res.append(solve_DNC_QUBO_with_random_pivoting(A, b, option, lb, ub, tol, verbose))
+        res += [solve_one(A, b, option, lb, ub, prec, neighbors, tol, stir, verbose)]
         y = eval(A, b, res[-1])
-        if y > 0:
+        if verbose:
+            print(f"y={y}\nres={res[-1]}\n")
+        if y >= 0:
             res.pop()
         else:
-            A, b = substitute_kx_plus_d(A, b, np.ones(m), res[-1])
+            b = b - A @ res[-1]
     return np.array(res).sum(axis=0)
