@@ -9,7 +9,7 @@ rng = np.random.default_rng()
 max_border = 1e3
 eps = 1e-2
 base_prec = 4
-base_neighbors = 4
+base_neighbors = 6
 base_iter = 10
 sigma = 1 / 4
 
