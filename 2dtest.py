@@ -54,12 +54,12 @@ def plot_ellipse(A: np.ndarray, c: float,  r: float) -> None:
 
 def rotate(A: np.ndarray, phi: float) -> np.ndarray:
     c, s = np.cos(2 * np.pi / 360 * phi), np.sin(2 * np.pi / 360 * phi)
-    R = np.array([[c, -s], [s, c]])
-    return R @ A @ R.T
+    R = np.array([[c, s], [-s, c]])
+    return R.T @ A @ R
 
 
 if __name__ == "__main__":
-    A = np.array([[1, 0], [0, 10]])
+    A = np.array([[1, 0], [0, 5]])
     if not os.path.exists("tests"):
         os.makedirs("tests")
     p = []
