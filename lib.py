@@ -1,7 +1,8 @@
 import numpy as np
-from scipy.optimize import minimize as scp_minimize
 from dwave.samplers import SimulatedAnnealingSampler
 import itertools
+
+
 rng = np.random.default_rng()
 default_niter = 1
 bound = 1000
@@ -49,24 +50,6 @@ def solve_QUBO(A: np.ndarray) -> np.ndarray:
     response = sampler.sample_qubo({(i, j): A[i][j] for (i, j) in itertools.product(range(n), repeat=2)})
     samples = response.samples()
     return np.array([samples[0][i] for i in range(n)])
-
-
-def solve_reference(A: np.ndarray, b: np.ndarray, tol: float = 0.01, verbose: bool = False) -> np.ndarray:
-    n = A.shape[0]
-    if verbose:
-        print(f"SLSQP solving SLE with\nA={A}\nb={b}")
-
-    def obj(x, *args):
-        return (x.T @ A + b.T) @ x
-
-    def callback(xk):
-        if verbose:
-            print(f"xk={xk}")
-
-    result = scp_minimize(obj, np.zeros(n), method='SLSQP', tol=tol, callback=callback)
-    if verbose:
-        print(f"Exiting SLSQP")
-    return result['x']
 
 
 def solve_one(A: np.ndarray, b: np.ndarray, prec: int, neighbors: int, lb: np.ndarray, ub: np.ndarray, tol: float,
