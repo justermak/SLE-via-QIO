@@ -29,6 +29,12 @@ def check(A: np.ndarray, p: np.ndarray, r: float) -> bool:
     return np.all(mn_val_idx == mn_dist_idx)
 
 
+def check_top_left(A: np.ndarray, p: np.ndarray, r: float) -> bool:
+    b = np.zeros(2)
+    x, y = p[0], p[1]
+    return eval(A, b, np.array([x - r, y + r])) < eval(A, b, np.array([x + r, y + r]))
+
+
 def plot_area(A: np.ndarray, r: float) -> float:
     xs = np.linspace(-5 * r, 5 * r, 100)
     ys = np.linspace(-5 * r, 5 * r, 100)
@@ -37,6 +43,18 @@ def plot_area(A: np.ndarray, r: float) -> float:
         for y in ys:
             if check(A, np.array([x, y]), r):
                 res.append([x, y])
+    plt.scatter(*zip(*res), s=10, c="cyan")
+    return len(res)/10000
+
+
+def plot_area_top_left(A: np.ndarray, r: float) -> float:
+    xs = np.linspace(-5 * r, 5 * r, 100)
+    ys = np.linspace(-5 * r, 5 * r, 100)
+    res = []
+    for x in xs:
+        for y in ys:
+            if check_top_left(A, np.array([x, y]), r):
+                res.append([x, y + 2])
     plt.scatter(*zip(*res), s=10, c="cyan")
     return len(res)/10000
 
@@ -66,7 +84,7 @@ if __name__ == "__main__":
     for phi in range(0, 50, 5):
         print(phi)
         AA = rotate(A, phi)
-        p.append(plot_area(AA, 2))
+        p.append(plot_area_top_left(AA, 2))
         plot_ellipse(AA, 10, 2)
         plt.savefig(f"tests/{phi}.png")
         plt.clf()
