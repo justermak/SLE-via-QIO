@@ -9,10 +9,10 @@ import lib
 rng = np.random.default_rng()
 directory = Path(f"{os.path.dirname(__file__)}")
 tests_path = directory / Path("tests")
-group_size = 20
+group_size = 16
 matrix_size = 3
-eigenvalues_ratios = [1, 2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100]
-tested_params = [(i, int(2 ** i * .45)) for i in range(3, 16)]
+eigenvalues_ratios = [50, 60, 70, 80, 90, 100, 110]
+tested_params = [(12, int(2 ** 12 * i / 20 * 0.5)) for i in range(10, 20)]
 
 
 def generate_equations_result_eigenvalues(res_bound, eigenvalues_ratio, size: int, n: int) -> Iterator[
@@ -51,7 +51,9 @@ def plot(total_solved: np.ndarray, max_group: np.ndarray) -> None:
     plt.clf()
 
     plt.title("Hardest test case solved")
-    plt.xticks(np.arange(len(tested_params)), list(map(lambda x: f"{(2 * x[1] + 1)}/{(2 ** x[0])}", tested_params)))
+    plt.xlabel("Neighbors percentage")
+    plt.ylabel("Condition number")
+    plt.xticks(np.arange(len(tested_params)), list(map(lambda x: f"{(2 * x[1] + 1)/(2 ** x[0]):.2f}", tested_params)))
     plt.yticks(np.arange(len(eigenvalues_ratios)), eigenvalues_ratios)
     plt.scatter(np.arange(len(tested_params)), max_group)
     plt.savefig(tests_path / Path("hardest"))

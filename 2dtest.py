@@ -36,20 +36,20 @@ def check_top_left(A: np.ndarray, p: np.ndarray, r: float) -> bool:
 
 
 def plot_area(A: np.ndarray, r: float) -> float:
-    xs = np.linspace(-5 * r, 5 * r, 100)
-    ys = np.linspace(-5 * r, 5 * r, 100)
+    xs = np.linspace(-2 * r, 2 * r, 300)
+    ys = np.linspace(-2 * r, 2 * r, 300)
     res = []
     for x in xs:
         for y in ys:
             if check(A, np.array([x, y]), r):
                 res.append([x, y])
     plt.scatter(*zip(*res), s=10, c="cyan")
-    return len(res)/10000
+    return len(res)/90000
 
 
 def plot_area_top_left(A: np.ndarray, r: float) -> float:
-    xs = np.linspace(-5 * r, 5 * r, 100)
-    ys = np.linspace(-5 * r, 5 * r, 100)
+    xs = np.linspace(-2 * r, 2 * r, 100)
+    ys = np.linspace(-2 * r, 2 * r, 100)
     res = []
     for x in xs:
         for y in ys:
@@ -60,8 +60,8 @@ def plot_area_top_left(A: np.ndarray, r: float) -> float:
 
 
 def plot_ellipse(A: np.ndarray, c: float,  r: float) -> None:
-    xs = np.linspace(-5 * r, 5 * r, 100)
-    ys = np.linspace(-5 * r, 5 * r, 100)
+    xs = np.linspace(-2 * r, 2 * r, 100)
+    ys = np.linspace(-2 * r, 2 * r, 100)
     res = []
     for x in xs:
         for y in ys:
@@ -77,17 +77,19 @@ def rotate(A: np.ndarray, phi: float) -> np.ndarray:
 
 
 if __name__ == "__main__":
-    A = np.array([[1, 0], [0, 5]])
+    A = np.array([[1, 0], [0, 20]])
     if not os.path.exists("tests"):
         os.makedirs("tests")
     p = []
     for phi in range(0, 50, 5):
         print(phi)
         AA = rotate(A, phi)
-        p.append(plot_area_top_left(AA, 2))
+        p.append(plot_area(AA, 2))
         plot_ellipse(AA, 10, 2)
         plt.savefig(f"tests/{phi}.png")
         plt.clf()
     plt.scatter(range(0, 50, 5), p)
+    plt.xlabel("Angle")
+    plt.ylabel("Probability")
     plt.savefig("tests/plot.png")
     plt.clf()
